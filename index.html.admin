@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New post — Maduabuchi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#17150F; --ink:#EFEADD; --muted:#948C79; --line:#332F26;
+    --cobalt:#7FA2D6; --brick:#E58A63;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:'Inter',sans-serif; line-height:1.5; -webkit-font-smoothing:antialiased;
+    min-height:100vh; display:flex; align-items:flex-start; justify-content:center;
+  }
+  .wrap{ max-width:520px; width:100%; padding:64px 28px; }
+  h1{ font-family:'Fraunces',serif; font-weight:500; font-size:1.8rem; margin-bottom:8px; }
+  .sub{ color:var(--muted); font-size:0.95rem; margin-bottom:32px; }
+  label{ display:block; font-size:0.85rem; color:var(--muted); margin:18px 0 6px; }
+  input, textarea{
+    width:100%; background:#1E1B14; border:1px solid var(--line); color:var(--ink);
+    border-radius:4px; padding:10px 12px; font-family:'Inter',sans-serif; font-size:0.98rem;
+  }
+  input:focus, textarea:focus{ outline:2px solid var(--cobalt); outline-offset:1px; border-color:var(--cobalt); }
+  textarea{ resize:vertical; min-height:160px; }
+  button{
+    margin-top:24px; background:var(--brick); color:#17150F; border:none;
+    padding:11px 22px; border-radius:4px; font-family:'Inter',sans-serif; font-size:0.95rem;
+    font-weight:600; cursor:pointer;
+  }
+  button:hover{ opacity:0.9; }
+  button:disabled{ opacity:0.5; cursor:not-allowed; }
+  .status{ margin-top:16px; font-size:0.9rem; color:var(--muted); min-height:1.2em; }
+  .status.error{ color:#E5786B; }
+  .status.success{ color:#8FBF8C; }
+  a.back{ color:var(--cobalt); font-size:0.9rem; display:inline-block; margin-top:32px; }
+  #dashboard{ display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>New post</h1>
+  <p class="sub">Sign in with your owner account to publish.</p>
+
+  <form id="login-form">
+    <label for="email">Email</label>
+    <input type="email" id="email" required autocomplete="username">
+    <label for="password">Password</label>
+    <input type="password" id="password" required autocomplete="current-password">
+    <button type="submit">Sign in</button>
+    <p class="status" id="login-status"></p>
+  </form>
+
+  <div id="dashboard" style="display:none;">
+    <form id="post-form">
+      <h2 style="font-family:'Fraunces',serif;font-weight:500;font-size:1.2rem;margin-top:8px;">New post</h2>
+      <label for="title">Title</label>
+      <input type="text" id="title" required placeholder="What's the post called?">
+      <label for="excerpt">Short excerpt</label>
+      <textarea id="excerpt" required placeholder="One or two sentences that show under the title." style="min-height:70px;"></textarea>
+      <label for="content">Full post</label>
+      <textarea id="content" required placeholder="Write the whole thing here."></textarea>
+      <button type="submit" id="publish-btn">Publish post</button>
+      <p class="status" id="post-status"></p>
+    </form>
+
+    <form id="quote-form" style="margin-top:48px;border-top:1px solid var(--line);padding-top:32px;">
+      <h2 style="font-family:'Fraunces',serif;font-weight:500;font-size:1.2rem;margin-top:0;">New quote</h2>
+      <label for="quote-text">Quote</label>
+      <textarea id="quote-text" required placeholder="The quote itself." style="min-height:90px;"></textarea>
+      <label for="quote-author">Attribution (optional)</label>
+      <input type="text" id="quote-author" placeholder="Who said it — leave blank if it's yours">
+      <button type="submit" id="quote-btn">Publish quote</button>
+      <p class="status" id="quote-status"></p>
+    </form>
+  </div>
+
+  <a class="back" href="index.html">← Back to site</a>
+</div>
+
+<script type="module">
+  import { firebaseConfig, OWNER_EMAIL } from "./firebase-config.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  const loginForm = document.getElementById("login-form");
+  const dashboard = document.getElementById("dashboard");
+  const postForm = document.getElementById("post-form");
+  const quoteForm = document.getElementById("quote-form");
+  const loginStatus = document.getElementById("login-status");
+  const postStatus = document.getElementById("post-status");
+  const quoteStatus = document.getElementById("quote-status");
+
+  onAuthStateChanged(auth, (user) => {
+    if (user && user.email === OWNER_EMAIL){
+      loginForm.style.display = "none";
+      dashboard.style.display = "block";
+    } else {
+      loginForm.style.display = "block";
+      dashboard.style.display = "none";
+    }
+  });
+
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    loginStatus.textContent = "Signing in…";
+    loginStatus.className = "status";
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    try{
+      await signInWithEmailAndPassword(auth, email, password);
+      loginStatus.textContent = "";
+    }catch(err){
+      loginStatus.textContent = "Couldn't sign in — check your email and password.";
+      loginStatus.className = "status error";
+    }
+  });
+
+  postForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("publish-btn");
+    btn.disabled = true;
+    postStatus.textContent = "Publishing…";
+    postStatus.className = "status";
+
+    const title = document.getElementById("title").value.trim();
+    const excerpt = document.getElementById("excerpt").value.trim();
+    const content = document.getElementById("content").value.trim();
+
+    try{
+      await addDoc(collection(db, "posts"), {
+        title, excerpt, content,
+        createdAt: serverTimestamp()
+      });
+      postStatus.textContent = "Published! It's live on your site now.";
+      postStatus.className = "status success";
+      postForm.reset();
+    }catch(err){
+      postStatus.textContent = "Something went wrong publishing that post.";
+      postStatus.className = "status error";
+    }finally{
+      btn.disabled = false;
+    }
+  });
+
+  quoteForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("quote-btn");
+    btn.disabled = true;
+    quoteStatus.textContent = "Publishing…";
+    quoteStatus.className = "status";
+
+    const text = document.getElementById("quote-text").value.trim();
+    const author = document.getElementById("quote-author").value.trim();
+
+    try{
+      await addDoc(collection(db, "quotes"), {
+        text, author,
+        createdAt: serverTimestamp()
+      });
+      quoteStatus.textContent = "Published! It's live on your site now.";
+      quoteStatus.className = "status success";
+      quoteForm.reset();
+    }catch(err){
+      quoteStatus.textContent = "Something went wrong publishing that quote.";
+      quoteStatus.className = "status error";
+    }finally{
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
